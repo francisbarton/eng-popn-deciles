@@ -1,0 +1,53 @@
+---
+title: "Where does half of England live?"
+author: "Francis Barton"
+output: rmdcss::html_splendor
+date: "`r Sys.Date()`"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(cache = TRUE, echo = TRUE, message = FALSE)
+
+library(here)
+library(dplyr)
+library(jsonlite)
+library(sf)
+library(tmap)
+
+```
+
+### Brief background
+
+So I was reading [Christopher Green's review essay](https://medium.com/@chrsgrn/bournemouth-doesnt-exist-f23c3d352a5b) of [Alex Niven's *New Model Island*](https://repeaterbooks.com/product/new-model-island-how-to-build-a-radical-culture-beyond-the-idea-of-england/) and he mentions with approval the suggestion of
+
+> an England bisected “by a diagonal line drawn between, roughly, Lyme Regis and Middlesborough”
+
+which led me to do some playing around with Google Maps to see exactly where such a line would run... and which side of it Stroud would be.
+
+I experimented with other SW-NE bisecting lines across England but couldn't do much better than Niven, though I did come up with one from roughly Weymouth to Whitby that has Bristol on the "right" side of the line and which also runs directly through that most deep-English of towns, Stratford-upon-Avon. I do think having radical Bristol on the west side of the line is important, not least because you want access to the Severn crossings if you're talking about connection to the Celtic nations as an alternative to dependence on London.
+
+I'm sorry though, Christopher, it doesn't matter how much you plead that Bournemouth's cultural metropole is Bristol rather than London, you're not going to smuggle Bournemouth over to the western side of the line.
+
+I also feel like if you have London on one side you probably need Birmingham on the other side, so the line has to take that into account. It's a bit like picking teams for playground games. Anyway, I am getting hugely off-topic.
+
+I ended up wondering what the population balance would be in Niven's speculative bisected England (before the inevitable migrations from one side to the other), and what a 50:50 population split would look like.
+
+```{r eng-sshot, echo = FALSE, fig.cap="*We get the Lakes, the Peaks, the Dales, Dartmoor and half the Cotswolds*"}
+knitr::include_graphics(here::here("england-bisected.png"))
+```
+
+
+### Initial thoughts
+Here are some initial thoughts and constraints:
+
+* Firstly, this is about *contiguous* areas. It would be easy to just take any list of small areas in England and split it evenly by population. You could start with the most highly-populated areas and move down, or start with the most densely-populated areas, or even go in alphabetical order. But let's not do that.
+* I'm imagining an end product map that has a boundary running very roughly SSE-NNW like Niven's line. If you're plotting contiguous areas up to an arbitrary size, there are millions of possible ways of doing it, and it matters a lot where you start. So does that mean I should start off in central London, or at Greenwich, or at the eastern tip of Kent? I might be able to run a few different programs with different starting points and see what happens.
+* Scale. I think MSOA level will be a small enough scale. I don't think we need to go down to LSOA level to do a good job here. Even local authority level might give us a pretty close answer.
+* I think I probably need to write a script that starts with a single area, logs its population, then adds on the population of every adjacent area and calculates (after removing duplicates of areas already included) the population of the new area. Then repeat until you get a population of 50% of the total.
+* I think the `sf` package will have the best and most up-to-date spatial tools to look at adjacent areas.
+* I am pretty sure someone will have done this already and I was briefly tempted to just search for their answer/tools/approach. But for now I am going to try to work this one out by myself. After I've made another cup of tea.
+* Final constraint/challenge to myself: to just write out my code and see what happens. Instead of tidying it all up and pretending I'd written it in smoothly. I should know enough by now about writing functions and writing fairly neat code without basic errors that I can code in the open and learn a bit about my own process. I will allow myself to write code in an .R script, not directly into this RMarkdown file, though, as I don't need to be knitting this text all the time and then scrolling down past it to see what the actual code output looks like.
+
+I just looked on [nomis](https://www.nomisweb.co.uk/articles/1212.aspx) to see if the recently-issued 2019 population estimates were available at MSOA level, but they're not: only down to LA level.
+
+So I will go back to the 2018 figures which are available at small area level.
