@@ -13,15 +13,15 @@ library(tmap)
 library(viridis)
 
 
-# created in functions.R
+# created in data_setup.R
 msoas_data <- readRDS(here("rds_data/msoas_data.Rds"))
 
-msoas_data <- sf::st_transform(msoas_data, crs = 3857)
+
+tmap_mode("plot")
 
 
 # density map just for interest -------------------------------------------
 
-tmap_mode("plot")
 density_map <- msoas_data %>%
   tm_shape(name = "MSOAs by density") +
   tm_fill(title = "MSOA population density",
@@ -44,111 +44,6 @@ pop_report <- function(x) {
 
 
 
-# use st_touches to pull adjacent areas out ---------------------------
-
-landgrab <- function(seed) {
-
-  remainder <- msoas_data %>%
-    filter(!msoa11cd %in% seed$msoa11cd)
-
-
-  new_index <- sf::st_touches(seed, remainder) %>%
-    unlist() %>%
-    unique() %>%
-    sample() # randomise so that initial shape irregularities are not amplified
-
-  if (length(new_index) == 0) {
-    break
-  }
-
-  else {
-    new_layer <- remainder %>%
-      slice(new_index)
-
-    sf:::rbind.sf(seed, new_layer)
-  }
-}
-
-
-landgrab_slowly <- function(seed, topslice, max = TRUE, focus_var = density) {
-
-  remainder <- msoas_data %>%
-    filter(!msoa11cd %in% seed$msoa11cd)
-
-
-  new_index <- sf::st_touches(seed, remainder) %>%
-    unlist() %>%
-    unique() # %>%
-    # sample() # randomise so that initial shape irregularities are not amplified (irrelevant now doing it slowly (below))
-
-  if (length(new_index) == 0) {
-    break
-  }
-
-  else if (max) {
-    new_layer <- remainder %>%
-      slice(new_index) %>%
-      slice_max(order_by = {{ focus_var }}, n = topslice)
-  }
-
-  else {
-    new_layer <- remainder %>%
-      slice(new_index) %>%
-      slice_min(order_by = {{ focus_var }}, n = topslice)
-  }
-
-  sf:::rbind.sf(seed, new_layer)
-}
-
-# a function to build the block ---------------------------------------
-
-build_block <- function(seed, fraction) {
-
-  pop <- pop_report(seed)
-  n <- 0
-
-  while (pop < (total_population*fraction)) {
-
-    seed <- landgrab(seed)
-    pop <- pop_report(seed)
-    n <- nrow(seed)
-    area <- sum(pull(seed, st_areashape))
-
-    if (n %% 100 == 0) {
-      usethis::ui_info(
-        glue::glue("{n} MSOAs ({round(n*100/nrow(msoas_data), 1)}%); area: {comma(round(area/1e6))} sq.km; popn.: {comma(pop)} ({round(pop*100/total_population, 2)}%)"))
-    }
-  }
-
-  usethis::ui_info(
-    glue::glue("FINAL: {n} MSOAs ({round(n*100/nrow(msoas_data), 1)}%); area: {comma(round(area/1e6))} sq.km; popn.: {comma(pop)} ({round(pop*100/total_population, 2)}%)"))
-
-  seed
-
-}
-
-build_slowly <- function(seed, topslice, fraction, ...) {
-
-  pop <- pop_report(seed)
-  n <- 0
-  while (pop < (total_population*fraction)) {
-
-    seed <- landgrab_slowly(seed, topslice, ...)
-    pop <- pop_report(seed)
-    n <- nrow(seed)
-    area <- sum(pull(seed, st_areashape))
-
-    if (n %% 100 == 0) {
-      usethis::ui_info(
-        glue::glue("{n} MSOAs ({round(n*100/nrow(msoas_data), 1)}%); area: {comma(round(area/1e6))} sq.km; popn.: {comma(pop)} ({round(pop*100/total_population, 2)}%)"))
-    }
-  }
-
-  usethis::ui_info(
-    glue::glue("FINAL: {n} MSOAs ({round(n*100/nrow(msoas_data), 1)}%); area: {comma(round(area/1e6))} sq.km; popn.: {comma(pop)} ({round(pop*100/total_population, 2)}%)"))
-
-  seed
-}
 
 
 # start with a seed MSOA --------------------------------------------------
@@ -245,6 +140,7 @@ fourth_ten <- build_block(third_ten, 4)
 pop_report(fourth_ten) - total_population*4/10
 pop_report(head(fourth_ten, -247)) - total_population*4/10
 fourth_ten <- head(fourth_ten, -247)
+
 
 fifth_ten <- build_block(fourth_ten, 5)
 pop_report(fifth_ten) - total_population*5/10

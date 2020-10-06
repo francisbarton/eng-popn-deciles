@@ -6,7 +6,6 @@ options(conflicts.policy = list(warn.conflicts = FALSE))
 library(here, quietly = TRUE)
 library(dplyr)
 library(janitor)
-# library(jsonlite)
 library(nomisr)
 library(purrr)
 library(readr)
@@ -84,12 +83,14 @@ fix_some_areas <- function(x) {
   valid_areas <- slice(x, valid)
 
   sf:::rbind.sf(valid_areas, fixed_areas_df)
-
 }
 
+
+
 save_it <- function(x, dir = "rds_data") {
+
   dirhere <- here::here(dir)
-  filenm <- paste0(deparse(enexpr(x)), ".Rds")
+  filenm <- paste0(deparse(rlang::enexpr(x)), ".Rds") # phwoar
 
   if (!dir.exists(dirhere)) {
     dir.create(dirhere)
@@ -100,39 +101,108 @@ save_it <- function(x, dir = "rds_data") {
 
 
 
-# pull together MSOA codes and population data ----------------------------
+# use st_touches to pull adjacent areas out ---------------------------
 
-lookup <- get_lookup() %>%
-  filter(ctrynm == "England") %>%
-  select(msoa11cd, msoa11hclnm, lad20nm, rgnnm)
+landgrab <- function(seed) {
 
-
-msoa_pops <- lookup %>%
-  pull(msoa11cd) %>%
-  make_batched_list() %>%
-  map_df( ~ retrieve_popn_data(.)) %>%
-  select(msoa11cd, population)
+  remainder <- msoas_data %>%
+    filter(!msoa11cd %in% seed$msoa11cd)
 
 
-# get MSOA boundaries -----------------------------------------------------
+  new_index <- sf::st_touches(seed, remainder) %>%
+    unlist() %>%
+    unique() %>%
+    sample() # randomise so that initial shape irregularities are not amplified
 
-# Generalised (BGC), not full resolution (BFC)
-# BGC https://geoportal.statistics.gov.uk/datasets/middle-layer-super-output-areas-december-2011-boundaries-ew-bgc
-msoa_bounds_url <- "https://opendata.arcgis.com/datasets/29fdaa2efced40378ce8173b411aeb0e_2.geojson"
+  if (length(new_index) == 0) {
+    break
+  }
 
-msoa_bounds <- sf::st_read(msoa_bounds_url) %>%
-  dplyr::semi_join(lookup) %>%
-  select(msoa11cd, st_areashape) %>%
-  fix_some_areas()
+  else {
+    new_layer <- remainder %>%
+      slice(new_index)
 
-
-msoas_data <- msoa_bounds %>%
-  left_join(lookup) %>%
-  left_join(msoa_pops) %>%
-  relocate(where(is.character)) %>%
-  relocate(msoa11cd, .after = msoa11hclnm) %>%
-  mutate(density = population*1e6/st_areashape) %>%
-  arrange(desc(density))
+    sf:::rbind.sf(seed, new_layer)
+  }
+}
 
 
-save_it(msoas_data)
+landgrab_slowly <- function(seed, topslice, max = TRUE, focus_var = density) {
+
+  remainder <- msoas_data %>%
+    filter(!msoa11cd %in% seed$msoa11cd)
+
+  new_index <- sf::st_touches(seed, remainder) %>%
+    unlist() %>%
+    unique() # %>%
+  # sample() # randomise so that initial shape irregularities are not amplified (irrelevant now doing it slowly (below))
+
+  if (length(new_index) == 0) {
+    break
+  }
+
+  else if (max) {
+    new_layer <- remainder %>%
+      slice(new_index) %>%
+      slice_max(order_by = {{ focus_var }}, n = topslice)
+  }
+
+  else {
+    new_layer <- remainder %>%
+      slice(new_index) %>%
+      slice_min(order_by = {{ focus_var }}, n = topslice)
+  }
+
+  sf:::rbind.sf(seed, new_layer)
+}
+
+# a function to build the block ---------------------------------------
+
+build_block <- function(seed, fraction) {
+
+  pop <- pop_report(seed)
+  n <- 0
+
+  while (pop < (total_population*fraction)) {
+
+    seed <- landgrab(seed)
+    pop <- pop_report(seed)
+    n <- nrow(seed)
+    area <- sum(pull(seed, st_areashape))
+
+    if (n %% 100 == 0) {
+      usethis::ui_info(
+        glue::glue("{n} MSOAs ({round(n*100/nrow(msoas_data), 1)}%); area: {comma(round(area/1e6))} sq.km; popn.: {comma(pop)} ({round(pop*100/total_population, 2)}%)"))
+    }
+  }
+
+  usethis::ui_info(
+    glue::glue("FINAL: {n} MSOAs ({round(n*100/nrow(msoas_data), 1)}%); area: {comma(round(area/1e6))} sq.km; popn.: {comma(pop)} ({round(pop*100/total_population, 2)}%)"))
+
+  seed
+
+}
+
+build_slowly <- function(seed, topslice, fraction, ...) {
+
+  pop <- pop_report(seed)
+  n <- 0
+
+  while (pop < (total_population*fraction)) {
+
+    seed <- landgrab_slowly(seed, topslice, ...)
+    pop <- pop_report(seed)
+    n <- nrow(seed)
+    area <- sum(pull(seed, st_areashape))
+
+    if (n %% 100 == 0) {
+      usethis::ui_info(
+        glue::glue("{n} MSOAs ({round(n*100/nrow(msoas_data), 1)}%); area: {comma(round(area/1e6))} sq.km; popn.: {comma(pop)} ({round(pop*100/total_population, 2)}%)"))
+    }
+  }
+
+  usethis::ui_info(
+    glue::glue("FINAL: {n} MSOAs ({round(n*100/nrow(msoas_data), 1)}%); area: {comma(round(area/1e6))} sq.km; popn.: {comma(pop)} ({round(pop*100/total_population, 2)}%)"))
+
+  seed
+}
